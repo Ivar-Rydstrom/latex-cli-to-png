@@ -1,0 +1,13 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "latex-to-png"
+version = "0.1.0"
+description = "Ultra-lightweight CLI tool for converting LaTeX strings to PNG files"
+requires-python = ">=3.8"
+license = {text = "MIT"}
+
+[project.scripts]
+latex-to-png = "latex_to_png.cli:main"
