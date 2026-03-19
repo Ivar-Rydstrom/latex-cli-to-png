@@ -57,7 +57,7 @@ sudo apt install texlive texlive-latex-extra dvipng
 ## Usage
 
 ```
-latex-to-png <latex_string> <filename> [-d <directory>]
+latex-to-png <latex_string> <filename> [-d <directory>] [-t]
 ```
 
 ### Arguments
@@ -67,6 +67,7 @@ latex-to-png <latex_string> <filename> [-d <directory>]
 | `latex_string` | Yes | The LaTeX expression to render. |
 | `filename` | Yes | Output filename (`.png` extension added automatically if omitted). |
 | `-d`, `--directory` | No | Output directory. Defaults to `./latex-to-png/` in the current working directory. Created automatically if it doesn't exist. |
+| `-t`, `--transparent` | No | Render with a transparent background instead of white. |
 
 ### Examples
 

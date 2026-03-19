@@ -47,7 +47,7 @@ def _run(cmd, **kwargs):
     return subprocess.run(cmd, capture_output=True, text=True, **kwargs)
 
 
-def _render_with_matplotlib(content, png_path):
+def _render_with_matplotlib(content, png_path, transparent):
     """Render using matplotlib mathtext. No system LaTeX needed.
     Returns True on success, False if matplotlib is unavailable or the
     expression uses unsupported LaTeX (e.g. multi-line environments).
@@ -70,12 +70,13 @@ def _render_with_matplotlib(content, png_path):
         plt.rcParams["font.family"] = "serif"
 
         fig = plt.figure(figsize=(0.1, 0.1))
-        fig.patch.set_facecolor("white")
+        fig.patch.set_facecolor("none" if transparent else "white")
         # Centre the text so bbox_inches='tight' captures the full glyph height
         fig.text(0.5, 0.5, stripped, fontsize=72, color="black",
                  ha="center", va="center")
         fig.savefig(png_path, dpi=300, bbox_inches="tight",
-                    facecolor="white", pad_inches=0.15)
+                    facecolor="none" if transparent else "white",
+                    transparent=transparent, pad_inches=0.15)
         plt.close(fig)
         return True
     except Exception:
@@ -83,7 +84,7 @@ def _render_with_matplotlib(content, png_path):
         return False
 
 
-def _fitz_pdf_to_png(pdf_path, png_path):
+def _fitz_pdf_to_png(pdf_path, png_path, transparent):
     """Render PDF to tightly-cropped PNG using pymupdf (fitz)."""
     import fitz
     doc = fitz.open(pdf_path)
@@ -100,10 +101,10 @@ def _fitz_pdf_to_png(pdf_path, png_path):
         ) & page.rect
     else:
         clip = page.rect
-    page.get_pixmap(dpi=600, clip=clip).save(png_path)
+    page.get_pixmap(dpi=600, clip=clip, alpha=transparent).save(png_path)
 
 
-def _compile_and_convert(tmpdir):
+def _compile_and_convert(tmpdir, transparent):
     """Try LaTeX-based backends to produce a PNG. Returns path to PNG."""
     # Strategy 1: tectonic + pymupdf
     if _has_command("tectonic"):
@@ -115,7 +116,7 @@ def _compile_and_convert(tmpdir):
                 print(result.stdout, file=sys.stderr)
                 sys.exit(1)
             png_path = os.path.join(tmpdir, "input.png")
-            _fitz_pdf_to_png(os.path.join(tmpdir, "input.pdf"), png_path)
+            _fitz_pdf_to_png(os.path.join(tmpdir, "input.pdf"), png_path, transparent)
             return png_path
         except ImportError:
             pass  # pymupdf not installed, fall through
@@ -132,10 +133,13 @@ def _compile_and_convert(tmpdir):
             sys.exit(1)
 
         png_file = os.path.join(tmpdir, "input.png")
-        result = _run([
+        dvipng_cmd = [
             "dvipng", "-D", "600", "-T", "tight",
             "-o", png_file, os.path.join(tmpdir, "input.dvi"),
-        ])
+        ]
+        if transparent:
+            dvipng_cmd += ["-bg", "Transparent"]
+        result = _run(dvipng_cmd)
         if result.returncode == 0:
             return png_file
 
@@ -152,7 +156,7 @@ def _compile_and_convert(tmpdir):
                 print(result.stdout, file=sys.stderr)
                 sys.exit(1)
             png_path = os.path.join(tmpdir, "input.png")
-            _fitz_pdf_to_png(os.path.join(tmpdir, "input.pdf"), png_path)
+            _fitz_pdf_to_png(os.path.join(tmpdir, "input.pdf"), png_path, transparent)
             return png_path
         except ImportError:
             pass
@@ -169,6 +173,7 @@ def _compile_and_convert(tmpdir):
             sys.exit(1)
 
         pdf_path = os.path.join(tmpdir, "input.pdf")
+        gs_device = "pngalpha" if transparent else "png16m"
 
         bbox_result = _run([
             "gs", "-dSAFER", "-dBATCH", "-dNOPAUSE",
@@ -187,7 +192,7 @@ def _compile_and_convert(tmpdir):
             png_out = os.path.join(tmpdir, "input.png")
             result = _run([
                 "gs", "-dSAFER", "-dBATCH", "-dNOPAUSE",
-                "-sDEVICE=png16m", "-r600",
+                f"-sDEVICE={gs_device}", "-r600",
                 f"-sOutputFile={png_out}",
                 f"-dDEVICEWIDTHPOINTS={x1 - x0 + 2 * pad:.1f}",
                 f"-dDEVICEHEIGHTPOINTS={y1 - y0 + 2 * pad:.1f}",
@@ -199,7 +204,7 @@ def _compile_and_convert(tmpdir):
         else:
             result = _run([
                 "gs", "-dSAFER", "-dBATCH", "-dNOPAUSE",
-                "-sDEVICE=png16m", "-r600",
+                f"-sDEVICE={gs_device}", "-r600",
                 f"-sOutputFile={os.path.join(tmpdir, 'input.png')}",
                 pdf_path,
             ])
@@ -223,10 +228,13 @@ def _compile_and_convert(tmpdir):
             sys.exit(1)
 
         prefix = os.path.join(tmpdir, "input")
-        result = _run([
+        pdftoppm_cmd = [
             "pdftoppm", "-png", "-r", "600", "-singlefile",
             os.path.join(tmpdir, "input.pdf"), prefix,
-        ])
+        ]
+        if transparent:
+            pdftoppm_cmd.append("-alpha")
+        result = _run(pdftoppm_cmd)
         if result.returncode == 0:
             return prefix + ".png"
         print("pdftoppm conversion failed:", file=sys.stderr)
@@ -245,7 +253,7 @@ def _compile_and_convert(tmpdir):
     sys.exit(1)
 
 
-def render(latex_string, filename, directory):
+def render(latex_string, filename, directory, transparent=False):
     """Render a LaTeX string to a PNG file."""
     if not filename.endswith(".png"):
         filename += ".png"
@@ -261,7 +269,7 @@ def render(latex_string, filename, directory):
     # Strategy 0: matplotlib mathtext — pure pip, no system tools needed.
     # Falls through on ImportError or unsupported LaTeX (e.g. \begin{align}).
     tmp_png = tempfile.mktemp(suffix=".png", prefix="latex_to_png_")
-    if _render_with_matplotlib(content, tmp_png):
+    if _render_with_matplotlib(content, tmp_png, transparent):
         shutil.move(tmp_png, output_path)
         print(f"Saved to {output_path}")
         return
@@ -273,7 +281,7 @@ def render(latex_string, filename, directory):
         with open(os.path.join(tmpdir, "input.tex"), "w") as f:
             f.write(tex_source)
 
-        png_file = _compile_and_convert(tmpdir)
+        png_file = _compile_and_convert(tmpdir, transparent)
         shutil.copy2(png_file, output_path)
         print(f"Saved to {output_path}")
 
@@ -293,9 +301,15 @@ def main():
         default=os.path.join(os.getcwd(), "latex-to-png"),
         help="Output directory (default: ./latex-to-png/)",
     )
+    parser.add_argument(
+        "-t",
+        "--transparent",
+        action="store_true",
+        help="Render with a transparent background instead of white",
+    )
 
     args = parser.parse_args()
-    render(args.latex_string, args.filename, args.directory)
+    render(args.latex_string, args.filename, args.directory, args.transparent)
 
 
 if __name__ == "__main__":
