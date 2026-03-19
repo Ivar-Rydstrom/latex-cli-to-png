@@ -2,7 +2,7 @@
 
 An ultra-lightweight, zero-dependency Python CLI tool that converts LaTeX strings directly into cropped PNG images using your system's LaTeX installation.
 
-![example output](https://raw.githubusercontent.com/ivarrydstrom/latex-cli-to-png/main/latex-to-png/test_quality.png)
+![example output](https://github.com/Ivar-Rydstrom/latex-cli-to-png/blob/main/latex-to-png/test_quality.png?raw=true)
 
 ## Installation
 
