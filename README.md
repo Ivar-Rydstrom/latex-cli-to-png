@@ -8,8 +8,16 @@ An ultra-lightweight, zero-dependency Python CLI tool that converts LaTeX string
 
 Clone the repo, then choose an install option:
 
-**No system LaTeX needed** — installs [Tectonic](https://tectonic-typesetting.github.io/) (self-contained LaTeX engine) and [PyMuPDF](https://pymupdf.readthedocs.io/) (PDF renderer) via pip:
+**No system LaTeX needed** — uses [Tectonic](https://tectonic-typesetting.github.io/) (self-contained LaTeX engine) and [PyMuPDF](https://pymupdf.readthedocs.io/) (PDF renderer):
 
+First, install Tectonic (not on PyPI — pick one):
+```bash
+brew install tectonic                  # macOS
+conda install -c conda-forge tectonic  # conda
+curl --proto '=https' --tlsv1.2 -fsSL https://drop-full.tectonic.typesetting.com/installer.sh | sh  # Linux
+```
+
+Then install this package with PyMuPDF:
 ```bash
 git clone https://github.com/ivarrydstrom/latex-cli-to-png.git
 cd latex-cli-to-png
@@ -87,7 +95,7 @@ Bare expressions like `E = mc^2` are automatically wrapped in `$...$` for math m
 
 1. Wraps your input in a minimal LaTeX document (with `amsmath` and `amssymb`)
 2. Compiles to PDF or DVI using the first available backend (tried in order):
-   - **Tectonic + PyMuPDF** — self-contained, no system LaTeX needed (`[batteries]` install)
+   - **Tectonic + PyMuPDF** — self-contained, no system LaTeX needed (install Tectonic + `pip install ".[batteries]"`)
    - **latex + dvipng** — fastest with a system TeX Live
    - **pdflatex + Ghostscript**
    - **pdflatex + pdftoppm**
