@@ -65,11 +65,17 @@ def _render_with_matplotlib(content, png_path):
         stripped = "$" + stripped[2:-2].strip() + "$"
 
     try:
-        fig = plt.figure()
+        # Use Computer Modern fonts to match LaTeX's default appearance
+        plt.rcParams["mathtext.fontset"] = "cm"
+        plt.rcParams["font.family"] = "serif"
+
+        fig = plt.figure(figsize=(0.1, 0.1))
         fig.patch.set_facecolor("white")
-        fig.text(0, 0, stripped, fontsize=72, color="black")
+        # Centre the text so bbox_inches='tight' captures the full glyph height
+        fig.text(0.5, 0.5, stripped, fontsize=72, color="black",
+                 ha="center", va="center")
         fig.savefig(png_path, dpi=300, bbox_inches="tight",
-                    facecolor="white", pad_inches=0.1)
+                    facecolor="white", pad_inches=0.15)
         plt.close(fig)
         return True
     except Exception:
