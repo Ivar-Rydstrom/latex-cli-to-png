@@ -4,9 +4,31 @@ An ultra-lightweight, zero-dependency Python CLI tool that converts LaTeX string
 
 ![example output](https://raw.githubusercontent.com/ivarrydstrom/latex-cli-to-png/main/latex-to-png/test_quality.png)
 
-## Prerequisites
+## Installation
 
-You need a working LaTeX installation and at least one of these conversion tool chains:
+Clone the repo, then choose an install option:
+
+**No system LaTeX needed** — installs [Tectonic](https://tectonic-typesetting.github.io/) (self-contained LaTeX engine) and [PyMuPDF](https://pymupdf.readthedocs.io/) (PDF renderer) via pip:
+
+```bash
+git clone https://github.com/ivarrydstrom/latex-cli-to-png.git
+cd latex-cli-to-png
+pip install -e ".[batteries]"
+```
+
+> On first use, Tectonic will download the required TeX packages (~50–100 MB) and cache them locally. Subsequent runs are instant.
+
+**With an existing system LaTeX** — zero extra Python dependencies:
+
+```bash
+pip install -e .
+```
+
+This adds the `latex-to-png` command to your PATH.
+
+## Prerequisites (system LaTeX option)
+
+If you installed without `[batteries]`, you need a working LaTeX installation and at least one of these conversion tool chains:
 
 | Backend | Commands needed | Notes |
 |---------|----------------|-------|
@@ -23,18 +45,6 @@ brew install --cask mactex   # or: brew install basictex
 ```bash
 sudo apt install texlive texlive-latex-extra dvipng
 ```
-
-## Installation
-
-Clone the repo and install in editable mode:
-
-```bash
-git clone https://github.com/ivarrydstrom/latex-cli-to-png.git
-cd latex-cli-to-png
-pip install -e .
-```
-
-This adds the `latex-to-png` command to your PATH.
 
 ## Usage
 
@@ -76,10 +86,12 @@ Bare expressions like `E = mc^2` are automatically wrapped in `$...$` for math m
 ## How it works
 
 1. Wraps your input in a minimal LaTeX document (with `amsmath` and `amssymb`)
-2. Compiles to PDF or DVI using your system's LaTeX
-3. Converts and tightly crops to PNG via the first available backend
-
-No Python dependencies are required -- only the standard library and your system's LaTeX tools.
+2. Compiles to PDF or DVI using the first available backend (tried in order):
+   - **Tectonic + PyMuPDF** — self-contained, no system LaTeX needed (`[batteries]` install)
+   - **latex + dvipng** — fastest with a system TeX Live
+   - **pdflatex + Ghostscript**
+   - **pdflatex + pdftoppm**
+3. Tightly crops and saves the result as a PNG
 
 ## License
 

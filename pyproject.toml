@@ -9,5 +9,8 @@ description = "Ultra-lightweight CLI tool for converting LaTeX strings to PNG fi
 requires-python = ">=3.8"
 license = {text = "MIT"}
 
+[project.optional-dependencies]
+batteries = ["tectonic", "pymupdf"]
+
 [project.scripts]
 latex-to-png = "latex_to_png.cli:main"

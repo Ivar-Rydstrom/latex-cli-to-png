@@ -49,6 +49,37 @@ def _run(cmd, **kwargs):
 
 def _compile_and_convert(tmpdir):
     """Try available backends to produce a PNG. Returns path to PNG on success."""
+    # Strategy 0: tectonic + pymupdf (pip install latex-to-png[batteries])
+    if _has_command("tectonic"):
+        try:
+            import fitz  # pymupdf
+            result = _run(["tectonic", "input.tex"], cwd=tmpdir)
+            if result.returncode != 0:
+                print("Tectonic compilation failed:", file=sys.stderr)
+                print(result.stdout, file=sys.stderr)
+                sys.exit(1)
+            pdf_path = os.path.join(tmpdir, "input.pdf")
+            png_path = os.path.join(tmpdir, "input.png")
+            doc = fitz.open(pdf_path)
+            page = doc[0]
+            # Compute tight bounding box over all drawn content
+            bbox_log = page.get_bboxlog()
+            if bbox_log:
+                content_rect = fitz.Rect()
+                for _, r in bbox_log:
+                    content_rect |= fitz.Rect(r)
+                pad = 4  # points
+                clip = fitz.Rect(
+                    content_rect.x0 - pad, content_rect.y0 - pad,
+                    content_rect.x1 + pad, content_rect.y1 + pad,
+                ) & page.rect
+            else:
+                clip = page.rect
+            page.get_pixmap(dpi=600, clip=clip).save(png_path)
+            return png_path
+        except ImportError:
+            pass  # pymupdf not installed, fall through
+
     # Strategy 1: latex + dvipng (fastest, best quality)
     if _has_command("latex") and _has_command("dvipng"):
         result = _run(
@@ -153,6 +184,7 @@ def _compile_and_convert(tmpdir):
     print(
         "No supported conversion tools found.\n"
         "Install one of:\n"
+        "  - pip install latex-to-png[batteries]  (tectonic + pymupdf, no system tools needed)\n"
         "  - latex + dvipng (usually bundled with TeX Live)\n"
         "  - pdflatex + ghostscript (gs)\n"
         "  - pdflatex + poppler-utils (pdftoppm)",
