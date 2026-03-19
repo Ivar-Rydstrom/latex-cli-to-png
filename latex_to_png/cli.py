@@ -47,40 +47,74 @@ def _run(cmd, **kwargs):
     return subprocess.run(cmd, capture_output=True, text=True, **kwargs)
 
 
+def _render_with_matplotlib(content, png_path):
+    """Render using matplotlib mathtext. No system LaTeX needed.
+    Returns True on success, False if matplotlib is unavailable or the
+    expression uses unsupported LaTeX (e.g. multi-line environments).
+    """
+    try:
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+    except ImportError:
+        return False
+
+    # Normalise display-math delimiters: \[...\] -> $...$
+    stripped = content.strip()
+    if stripped.startswith(r"\[") and stripped.endswith(r"\]"):
+        stripped = "$" + stripped[2:-2].strip() + "$"
+
+    try:
+        fig = plt.figure()
+        fig.patch.set_facecolor("white")
+        fig.text(0, 0, stripped, fontsize=72, color="black")
+        fig.savefig(png_path, dpi=300, bbox_inches="tight",
+                    facecolor="white", pad_inches=0.1)
+        plt.close(fig)
+        return True
+    except Exception:
+        plt.close("all")
+        return False
+
+
+def _fitz_pdf_to_png(pdf_path, png_path):
+    """Render PDF to tightly-cropped PNG using pymupdf (fitz)."""
+    import fitz
+    doc = fitz.open(pdf_path)
+    page = doc[0]
+    bbox_log = page.get_bboxlog()
+    if bbox_log:
+        content_rect = fitz.Rect()
+        for _, r in bbox_log:
+            content_rect |= fitz.Rect(r)
+        pad = 4  # points
+        clip = fitz.Rect(
+            content_rect.x0 - pad, content_rect.y0 - pad,
+            content_rect.x1 + pad, content_rect.y1 + pad,
+        ) & page.rect
+    else:
+        clip = page.rect
+    page.get_pixmap(dpi=600, clip=clip).save(png_path)
+
+
 def _compile_and_convert(tmpdir):
-    """Try available backends to produce a PNG. Returns path to PNG on success."""
-    # Strategy 0: tectonic + pymupdf (pip install latex-to-png[batteries])
+    """Try LaTeX-based backends to produce a PNG. Returns path to PNG."""
+    # Strategy 1: tectonic + pymupdf
     if _has_command("tectonic"):
         try:
-            import fitz  # pymupdf
+            import fitz  # noqa: F401 — just checking availability
             result = _run(["tectonic", "input.tex"], cwd=tmpdir)
             if result.returncode != 0:
                 print("Tectonic compilation failed:", file=sys.stderr)
                 print(result.stdout, file=sys.stderr)
                 sys.exit(1)
-            pdf_path = os.path.join(tmpdir, "input.pdf")
             png_path = os.path.join(tmpdir, "input.png")
-            doc = fitz.open(pdf_path)
-            page = doc[0]
-            # Compute tight bounding box over all drawn content
-            bbox_log = page.get_bboxlog()
-            if bbox_log:
-                content_rect = fitz.Rect()
-                for _, r in bbox_log:
-                    content_rect |= fitz.Rect(r)
-                pad = 4  # points
-                clip = fitz.Rect(
-                    content_rect.x0 - pad, content_rect.y0 - pad,
-                    content_rect.x1 + pad, content_rect.y1 + pad,
-                ) & page.rect
-            else:
-                clip = page.rect
-            page.get_pixmap(dpi=600, clip=clip).save(png_path)
+            _fitz_pdf_to_png(os.path.join(tmpdir, "input.pdf"), png_path)
             return png_path
         except ImportError:
             pass  # pymupdf not installed, fall through
 
-    # Strategy 1: latex + dvipng (fastest, best quality)
+    # Strategy 2: latex + dvipng (fastest, best quality)
     if _has_command("latex") and _has_command("dvipng"):
         result = _run(
             ["latex", "-interaction=nonstopmode", "-halt-on-error", "input.tex"],
@@ -99,7 +133,25 @@ def _compile_and_convert(tmpdir):
         if result.returncode == 0:
             return png_file
 
-    # Strategy 2: pdflatex + ghostscript
+    # Strategy 3: pdflatex + pymupdf
+    if _has_command("pdflatex"):
+        try:
+            import fitz  # noqa: F401
+            result = _run(
+                ["pdflatex", "-interaction=nonstopmode", "-halt-on-error", "input.tex"],
+                cwd=tmpdir,
+            )
+            if result.returncode != 0:
+                print("pdflatex compilation failed:", file=sys.stderr)
+                print(result.stdout, file=sys.stderr)
+                sys.exit(1)
+            png_path = os.path.join(tmpdir, "input.png")
+            _fitz_pdf_to_png(os.path.join(tmpdir, "input.pdf"), png_path)
+            return png_path
+        except ImportError:
+            pass
+
+    # Strategy 4: pdflatex + ghostscript
     if _has_command("pdflatex") and _has_command("gs"):
         result = _run(
             ["pdflatex", "-interaction=nonstopmode", "-halt-on-error", "input.tex"],
@@ -112,12 +164,10 @@ def _compile_and_convert(tmpdir):
 
         pdf_path = os.path.join(tmpdir, "input.pdf")
 
-        # Get bounding box of content
         bbox_result = _run([
             "gs", "-dSAFER", "-dBATCH", "-dNOPAUSE",
             "-sDEVICE=bbox", pdf_path,
         ])
-        # bbox device writes to stderr
         bbox_line = None
         for line in bbox_result.stderr.splitlines():
             if line.startswith("%%HiResBoundingBox:"):
@@ -125,12 +175,11 @@ def _compile_and_convert(tmpdir):
                 break
 
         if bbox_line:
-            # Crop PDF to bounding box with padding, then render
             parts = bbox_line.split(":")[1].strip().split()
             x0, y0, x1, y1 = [float(p) for p in parts]
-            pad = 4  # points of padding
+            pad = 4
             png_out = os.path.join(tmpdir, "input.png")
-            crop_args = [
+            result = _run([
                 "gs", "-dSAFER", "-dBATCH", "-dNOPAUSE",
                 "-sDEVICE=png16m", "-r600",
                 f"-sOutputFile={png_out}",
@@ -140,10 +189,8 @@ def _compile_and_convert(tmpdir):
                 "-c",
                 f"<< /BeginPage {{ {-(x0 - pad):.1f} {-(y0 - pad):.1f} translate }} >> setpagedevice",
                 "-f", pdf_path,
-            ]
-            result = _run(crop_args)
+            ])
         else:
-            # Fallback: render without cropping
             result = _run([
                 "gs", "-dSAFER", "-dBATCH", "-dNOPAUSE",
                 "-sDEVICE=png16m", "-r600",
@@ -158,7 +205,7 @@ def _compile_and_convert(tmpdir):
         print(result.stderr, file=sys.stderr)
         sys.exit(1)
 
-    # Strategy 3: pdflatex + pdftoppm (poppler)
+    # Strategy 5: pdflatex + pdftoppm (poppler)
     if _has_command("pdflatex") and _has_command("pdftoppm"):
         result = _run(
             ["pdflatex", "-interaction=nonstopmode", "-halt-on-error", "input.tex"],
@@ -169,7 +216,6 @@ def _compile_and_convert(tmpdir):
             print(result.stdout, file=sys.stderr)
             sys.exit(1)
 
-        # pdftoppm outputs <prefix>-1.png for single page
         prefix = os.path.join(tmpdir, "input")
         result = _run([
             "pdftoppm", "-png", "-r", "600", "-singlefile",
@@ -184,7 +230,7 @@ def _compile_and_convert(tmpdir):
     print(
         "No supported conversion tools found.\n"
         "Install one of:\n"
-        "  - pip install latex-to-png[batteries]  (tectonic + pymupdf, no system tools needed)\n"
+        "  - pip install latex-to-png[batteries]  (matplotlib, no system tools needed)\n"
         "  - latex + dvipng (usually bundled with TeX Live)\n"
         "  - pdflatex + ghostscript (gs)\n"
         "  - pdflatex + poppler-utils (pdftoppm)",
@@ -206,12 +252,19 @@ def render(latex_string, filename, directory):
     else:
         content = latex_string
 
-    tex_source = TEX_TEMPLATE.format(content=content)
+    # Strategy 0: matplotlib mathtext — pure pip, no system tools needed.
+    # Falls through on ImportError or unsupported LaTeX (e.g. \begin{align}).
+    tmp_png = tempfile.mktemp(suffix=".png", prefix="latex_to_png_")
+    if _render_with_matplotlib(content, tmp_png):
+        shutil.move(tmp_png, output_path)
+        print(f"Saved to {output_path}")
+        return
 
+    # Fall back to LaTeX-based pipeline
+    tex_source = TEX_TEMPLATE.format(content=content)
     tmpdir = tempfile.mkdtemp(prefix="latex_to_png_")
     try:
-        tex_file = os.path.join(tmpdir, "input.tex")
-        with open(tex_file, "w") as f:
+        with open(os.path.join(tmpdir, "input.tex"), "w") as f:
             f.write(tex_source)
 
         png_file = _compile_and_convert(tmpdir)

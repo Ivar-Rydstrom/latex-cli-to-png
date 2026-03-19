@@ -8,23 +8,23 @@ An ultra-lightweight, zero-dependency Python CLI tool that converts LaTeX string
 
 Clone the repo, then choose an install option:
 
-**No system LaTeX needed** — uses [Tectonic](https://tectonic-typesetting.github.io/) (self-contained LaTeX engine) and [PyMuPDF](https://pymupdf.readthedocs.io/) (PDF renderer):
+**No system LaTeX needed** — uses [matplotlib](https://matplotlib.org/)'s built-in math renderer, installable entirely via pip:
 
-First, install Tectonic (not on PyPI — pick one):
-```bash
-brew install tectonic                  # macOS
-conda install -c conda-forge tectonic  # conda
-curl --proto '=https' --tlsv1.2 -fsSL https://drop-full.tectonic.typesetting.com/installer.sh | sh  # Linux
-```
-
-Then install this package with PyMuPDF:
 ```bash
 git clone https://github.com/ivarrydstrom/latex-cli-to-png.git
 cd latex-cli-to-png
 pip install -e ".[batteries]"
 ```
 
-> On first use, Tectonic will download the required TeX packages (~50–100 MB) and cache them locally. Subsequent runs are instant.
+> This covers standard math expressions. Multi-line environments like `\begin{align}` require a system LaTeX installation (see below).
+
+**Optional upgrade — higher quality with [Tectonic](https://tectonic-typesetting.github.io/):** if `tectonic` is also installed, it will be used instead of matplotlib (real LaTeX output, full package support). Tectonic is not on PyPI but can be installed separately:
+```bash
+brew install tectonic                  # macOS
+conda install -c conda-forge tectonic  # conda
+curl --proto '=https' --tlsv1.2 -fsSL https://drop-full.tectonic.typesetting.com/installer.sh | sh  # Linux
+```
+> On first use, Tectonic downloads required TeX packages (~50–100 MB) and caches them locally.
 
 **With an existing system LaTeX** — zero extra Python dependencies:
 
@@ -95,7 +95,8 @@ Bare expressions like `E = mc^2` are automatically wrapped in `$...$` for math m
 
 1. Wraps your input in a minimal LaTeX document (with `amsmath` and `amssymb`)
 2. Compiles to PDF or DVI using the first available backend (tried in order):
-   - **Tectonic + PyMuPDF** — self-contained, no system LaTeX needed (install Tectonic + `pip install ".[batteries]"`)
+   - **matplotlib mathtext** — pure pip, no system tools (`pip install ".[batteries]"`)
+   - **Tectonic + PyMuPDF** — real LaTeX output, no system TeX needed (install Tectonic separately)
    - **latex + dvipng** — fastest with a system TeX Live
    - **pdflatex + Ghostscript**
    - **pdflatex + pdftoppm**

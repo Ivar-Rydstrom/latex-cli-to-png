@@ -10,7 +10,7 @@ requires-python = ">=3.8"
 license = {text = "MIT"}
 
 [project.optional-dependencies]
-batteries = ["pymupdf"]
+batteries = ["matplotlib", "pymupdf"]
 
 [project.scripts]
 latex-to-png = "latex_to_png.cli:main"
